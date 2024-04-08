@@ -1,0 +1,104 @@
+package repositories
+
+import (
+	"errors"
+	"submission_promotion_tracking_api/internal/app/models"
+	"submission_promotion_tracking_api/utils/exception"
+
+	"gorm.io/gorm"
+)
+
+type PromotionRepository interface {
+	CreatePromotion(promo models.Promotion) (models.Promotion, error)
+	GetAllPromotions() ([]models.Promotion, error)
+	GetPromotionbyPromotionID(promotionID string) (models.Promotion, error)
+	UpdatePromotionbyPromotionID(promo models.Promotion) (models.Promotion, error)
+	DeletePromotionbyPromotionID(promotionID string) error
+}
+
+type PromotionRepositoryImpl struct {
+	db *gorm.DB
+}
+
+// NewPromotionRepository creates a new instance of PromotionRepository
+func NewPromotionRepository(db *gorm.DB) PromotionRepository {
+	return &PromotionRepositoryImpl{
+		db: db,
+	}
+}
+
+// CreatePromotion creates a new promotion in the database
+func (r *PromotionRepositoryImpl) CreatePromotion(promo models.Promotion) (models.Promotion, error) {
+	// Insert the promotion into the database
+	err := r.db.Unscoped().Create(&promo).Error
+	return promo, err
+}
+
+// GetAllPromotions throw all data that recorded in the database
+func (r *PromotionRepositoryImpl) GetAllPromotions() ([]models.Promotion, error) {
+	// Initialize a slice to store the retrieved promotions
+	var promotions []models.Promotion
+
+	// Query the database to retrieve all promotions
+	if err := r.db.Debug().Unscoped().Find(&promotions).Error; err != nil {
+		// If an error occurs during the database operation, return nil and the encountered error
+		return nil, err
+	}
+
+	// Return the retrieved promotions slice if the operation is successful
+	return promotions, nil
+}
+
+// GetPromotionByPromotionID will throw data based on promotionID request
+func (r *PromotionRepositoryImpl) GetPromotionbyPromotionID(PromotionID string) (models.Promotion, error) {
+	// Initialize a Promotion variable to store the retrieved promotion
+	var promo models.Promotion
+
+	// Query the database to retrieve the promotion with the specified PromotionID
+	if err := r.db.Unscoped().Where("promotion_id = ?", PromotionID).Take(&promo).Error; err != nil {
+		// If the promotion record is not found, return an error indicating that the promotion was not found
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return models.Promotion{}, errors.New("promotion not found")
+		}
+		// If any other error occurs during the database operation, return the encountered error
+		return models.Promotion{}, err
+	}
+
+	// Return the retrieved promotion if the operation is successful
+	return promo, nil
+}
+
+// UpdatePromotion will update data based on promotionID request
+func (r *PromotionRepositoryImpl) UpdatePromotionbyPromotionID(promo models.Promotion) (models.Promotion, error) {
+	// Assuming you have unique constraints on promotion_id and dates,
+	// you can perform the duplicate check before updating
+	var existingPromo models.Promotion
+	if err := r.db.Where("promotion_id = ?", promo.PromotionID).First(&existingPromo).Error; err != nil {
+		// Duplicate promotion found
+		return models.Promotion{}, err
+	}
+
+	// Update the promotion
+	if err := r.db.Unscoped().Save(&promo).Error; err != nil {
+		return models.Promotion{}, err
+	}
+	return promo, nil
+}
+
+// DeletePromotionByPromotionID will delete data based on promotionID request
+func (r *PromotionRepositoryImpl) DeletePromotionbyPromotionID(promotionID string) error {
+	// Execute a delete operation on the promotion record with the specified PromotionID
+	if err := r.db.Unscoped().Where("promotion_id = ?", promotionID).Delete(&models.Promotion{}).Error; err != nil {
+		// If the promotion record is not found, return a custom error indicating that the promotion was not found
+		if err == gorm.ErrRecordNotFound {
+			return &exception.PromotionIDNotFoundError{
+				Message:     "Promotion Not Found",
+				PromotionID: promotionID,
+			}
+		}
+		// If any other error occurs during the database operation, return the encountered error
+		return err
+	}
+	// Return nil if the operation is successful (promotion deleted)
+	return nil
+}
